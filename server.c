@@ -10,15 +10,18 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <stdbool.h>
 
 #include "err.h"
 
 #define MAX_CLIENTS 16
-#define BUF_SIZE 16
+#define BUF_SIZE 100000
 
 #define QUEUE_LENGTH     5
 #define PORT_NUM     10001
 
+char buf_global[BUF_SIZE];
+char* buf_ptr=buf_global;
 struct connection_description {
     struct sockaddr_in address;
     evutil_socket_t sock;
@@ -40,20 +43,29 @@ struct connection_description *get_client_slot(void) {
 }
 
 void client_socket_cb(evutil_socket_t sock, short ev, void *arg) {
-    struct connection_description *cl = (struct connection_description *) arg;
-    char buf[BUF_SIZE + 1];
+    struct connection_description *cl = (struct connection_description *)arg;
+    char buf[BUF_SIZE+1];
 
     int r = read(sock, buf, BUF_SIZE);
-    if (r <= 0) {
-        if (r < 0) {
-            fprintf(stderr,
-                    "Error (%s) while reading data from %s:%d. Closing connection.\n",
-                    strerror(errno), inet_ntoa(cl->address.sin_addr),
-                    ntohs(cl->address.sin_port));
+    if(r <= 0) {
+        if(r < 0) {
+            fprintf(stderr, "Error (%s) while reading data from %s:%d. Closing connection.\n",
+                    strerror(errno), inet_ntoa(cl->address.sin_addr), ntohs(cl->address.sin_port));
         } else {
+            char* ptr = buf_global;
+            while(*ptr != '#')
+                ptr++;
+            *ptr = 0;
+            FILE *fp;
+            char fileName[BUF_SIZE] = "copy-";
+            strcat(fileName, buf_global);
+            fp = fopen(fileName, "ab+");
+            write(fileno(fp),ptr+1,strlen(ptr+1));
+            fclose(fp);
             fprintf(stderr, "Connection from %s:%d closed.\n",
-                    inet_ntoa(cl->address.sin_addr),
-                    ntohs(cl->address.sin_port));
+                    inet_ntoa(cl->address.sin_addr), ntohs(cl->address.sin_port));
+            buf_global[0]=0;
+            buf_ptr = buf_global;
         }
         if (event_del(cl->ev) == -1) syserr("Can't delete the event.");
         event_free(cl->ev);
@@ -62,8 +74,9 @@ void client_socket_cb(evutil_socket_t sock, short ev, void *arg) {
         return;
     }
     buf[r] = 0;
-    printf("[%s:%d] %s\n", inet_ntoa(cl->address.sin_addr),
-           ntohs(cl->address.sin_port), buf);
+    strcpy(buf_ptr,buf);
+    while((*buf_ptr) != 0)
+        buf_ptr++;
 }
 
 void listener_socket_cb(evutil_socket_t sock, short ev, void *arg) {

@@ -65,18 +65,18 @@ void an_event_cb(struct bufferevent *bev, short what, void *arg) {
 
 int main(int argc, char *argv[]) {
     /* Kontrola dokumentów ... */
-    if (argc < 3)
-        fatal("Usage: %s hostname port\n", argv[0]);
+    if (argc < 4)
+        fatal("Usage: %s hostname port filename\n", argv[0]);
 
     // Jeśli chcemy, żeby wszystko działało nieco wolniej, ale za to
     // działało dla wejścia z pliku, to należy odkomentować linijki
     // poniżej, a zakomentować aktualne przypisanie do base
-    /* struct event_config *cfg = event_config_new(); */
-    /* event_config_avoid_method(cfg, "epoll"); */
-    /* base = event_base_new_with_config(cfg); */
-    /* event_config_free(cfg); */
+    struct event_config *cfg = event_config_new();
+    event_config_avoid_method(cfg, "epoll");
+    base = event_base_new_with_config(cfg);
+    event_config_free(cfg);
 
-    base = event_base_new();
+//  base = event_base_new();
     if (!base)
         syserr("event_base_new");
 
@@ -106,8 +106,17 @@ int main(int argc, char *argv[]) {
     if (bufferevent_enable(bev, EV_READ | EV_WRITE) == -1)
         syserr("bufferevent_enable");
 
+    if (bufferevent_write(bev, argv[3], strlen(argv[3])) == -1)
+        syserr("bufferevent_write");
+    const char *seperator="#";
+    if (bufferevent_write(bev, seperator, strlen(seperator)) == -1)
+        syserr("bufferevent_write");
+    FILE *fptr;
+    fptr = fopen(argv[3],"r");
+    int fd =  fileno(fptr);
+
     struct event *stdin_event =
-            event_new(base, 0, EV_READ | EV_PERSIST, stdin_cb, NULL);
+            event_new(base, fd, EV_READ | EV_PERSIST, stdin_cb, NULL);
     if (!stdin_event)
         syserr("event_new");
     if (event_add(stdin_event, NULL) == -1)
